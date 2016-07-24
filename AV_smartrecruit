@@ -1,0 +1,306 @@
+
+import numpy as np
+import pandas as pd
+
+from sklearn import ensemble, preprocessing
+
+#from sklearn.calibration import CalibratedClassifierCV
+ 
+
+
+train  = pd.read_csv('../input/Train_pjb2QcD.csv')#, nrows =1000)
+test  = pd.read_csv('../input/Test_wyCirpO.csv')
+pin = pd.read_csv('../input/all_india_pin_code.csv')[['pincode','statename']]
+test['Business_Sourced'] = -1
+df = pd.concat([train,test])
+
+pin.columns = ['Office_PIN','Office_PIN_state']
+df = df.merge(pin,on= 'Office_PIN',how = 'left')
+#x = pin[['pincode','statename']]
+pin.columns = ['Applicant_City_PIN','Applicant_City_PIN_state']
+df = df.merge(pin,on= 'Applicant_City_PIN',how = 'left')
+from itertools import combinations
+
+
+def ft_1way(df, f):
+    df = df[f].value_counts().reset_index().rename(columns={'index': f, f: f + "_count"})
+    return df
+def ft_2way(df, f1, f2):
+    df = df[[f1, f2]].groupby([f1, f2]).size().reset_index().rename(columns={0: f1 + "_" + f2 + "_count" })
+    return df
+
+
+
+categorical_columns = ['Office_PIN','Applicant_City_PIN','Applicant_Gender','Applicant_Marital_Status','Applicant_Occupation','Applicant_Qualification','Manager_Joining_Designation','Manager_Current_Designation','Manager_Status','Manager_Gender']
+df1 = df.copy()
+for i in categorical_columns:
+    #print i
+    tmp = ft_1way(df, i)
+    df1 = pd.merge(df1, tmp, on=i, how='left')
+    
+    
+
+categorical_columns_2 = combinations(categorical_columns, 2)
+for t, (i, j) in enumerate(categorical_columns_2):
+    #print "{} generating interactions : {} | {}".format(t+1, i, j)
+    tmp = ft_2way(df, i, j)
+    df1 = pd.merge(df1, tmp, on=[i,j], how='left')
+ 
+
+
+df1 = df1.drop(df.columns , axis =1)  
+
+
+
+"""
+
+#df['Office_PIN_Manager_Current_Designation_count'] = df1['Office_PIN_Manager_Current_Designation_count']
+df['Office_PIN_Manager_Gender_count'] = df1['Office_PIN_Manager_Gender_count']
+#df['Office_PIN_Applicant_Qualification_count'] = df1['Office_PIN_Applicant_Qualification_count']
+df['Office_PIN_Applicant_Qualification_count'] = df1['Office_PIN_Applicant_Qualification_count']
+df['Office_PIN_Applicant_Marital_Status_count'] = df1['Office_PIN_Applicant_Marital_Status_count']
+df['Office_PIN_Applicant_Gender_count'] = df1['Office_PIN_Applicant_Gender_count']
+"""
+
+
+
+
+def Applicant_Qualification(x):
+    if x == 'Class XII':
+        return 1
+    elif x == 'Graduate':
+        return 2
+    elif x == 'Others':
+        return 3
+    elif x == 'Class X':
+        return 4
+    elif x == 'Masters of Business Administration':
+        return 5
+    elif pd.isnull(x):
+        return 6
+    else:
+        return 7
+df['Applicant_Qualification'] = df['Applicant_Qualification'].map(Applicant_Qualification)
+
+def Manager_Joining_Designation(x):
+    if x == 'Level 5':
+        return "4+"
+    elif x == 'Level 6':
+        return "4+"
+    elif x == 'Level 7':
+        return "4+"
+    else:
+        return x
+df['Manager_Joining_Designation'] = df['Manager_Joining_Designation'].map(Manager_Joining_Designation)
+
+def Manager_Grade(x):
+    if x < 2:
+        return 2
+    elif x > 7:
+        return 8
+    else:
+        return x
+df['Manager_Grade'] = df['Manager_Grade'].map(Manager_Grade)
+
+def Manager_Business(x):
+    if x <0:
+        return 0
+    else:
+        return x
+df['Manager_Business'] = df['Manager_Business'].map(Manager_Business)
+
+
+
+
+
+
+
+ctr1 = pd.isnull(train.Applicant_BirthDate)
+ctr2 = pd.isnull(train.Applicant_Qualification)
+ctr3  = pd.isnull(train.Applicant_Marital_Status)
+ctr4  = pd.isnull(train.Applicant_Gender)
+
+
+cte1 = pd.isnull(test.Applicant_BirthDate)
+cte2 = pd.isnull(test.Applicant_Qualification)
+cte3  = pd.isnull(test.Applicant_Marital_Status)
+cte4  = pd.isnull(test.Applicant_Gender)
+
+k = df[['ID','Applicant_City_PIN']]
+k = k.groupby('Applicant_City_PIN').agg('count').reset_index()
+k.rename(columns = {'ID':'count_Applicant_City_PIN'},inplace = True)
+df = df.merge(k,on= 'Applicant_City_PIN',how = 'left')
+
+k = df[['ID','Office_PIN']]
+k = k.groupby('Office_PIN').agg('count').reset_index()
+k.rename(columns = {'ID':'count_Office_PIN'},inplace = True)
+df = df.merge(k,on= 'Office_PIN',how = 'left')
+
+k = df[['ID','Office_PIN','Applicant_City_PIN']]
+k = k.groupby(['Office_PIN','Applicant_City_PIN']).agg('count').reset_index()
+k.rename(columns = {'ID':'count_Office_PIN_Applicant_City_PIN'},inplace = True)
+df = df.merge(k,on= ['Office_PIN','Applicant_City_PIN'],how = 'left')
+
+k = df[['ID','Applicant_Occupation']]
+k = k.groupby(['Applicant_Occupation']).agg('count').reset_index()
+k.rename(columns = {'ID':'count_Applicant_Occupation'},inplace = True)
+df = df.merge(k,on= ['Applicant_Occupation'],how = 'left')
+
+k = df[['ID','Applicant_Occupation','Office_PIN']]
+k = k.groupby(['Applicant_Occupation','Office_PIN']).agg('count').reset_index()
+k.rename(columns = {'ID':'count_Applicant_OccupationOffice_PIN'},inplace = True)
+df = df.merge(k,on= ['Applicant_Occupation','Office_PIN'],how = 'left')
+
+df  = df.drop(['Applicant_City_PIN','Office_PIN'],axis =1)
+
+
+df['Application_Receipt_Date'] =  pd.to_datetime(df['Application_Receipt_Date'], format='%m/%d/%Y')
+df['year'] = df.Application_Receipt_Date.apply(lambda x: x.year)
+df['month'] = df.Application_Receipt_Date.apply(lambda x: x.month)
+df['dayofweek'] = df.Application_Receipt_Date.apply(lambda x: x.dayofweek)
+
+df['Manager_DOJ'] =  pd.to_datetime(df['Manager_DOJ'], format='%m/%d/%Y')
+df['Manager_DOJyear'] = df.Manager_DOJ.apply(lambda x: x.year)
+df['Manager_DOJmonth'] = df.Manager_DOJ.apply(lambda x: x.month)
+
+df['Manager_DoB'] =  pd.to_datetime(df['Manager_DoB'], format='%m/%d/%Y')
+df['Manager_DoByear'] = df.Manager_DoB.apply(lambda x: x.year)
+df['Manager_DOBmonth'] = df.Manager_DoB.apply(lambda x: x.month)
+
+df['Applicant_BirthDate'] =  pd.to_datetime(df['Applicant_BirthDate'], format='%m/%d/%Y')
+df['Applicant_BirthDateyear'] = df.Applicant_BirthDate.apply(lambda x: x.year)
+df['Applicant_BirthDatemonth'] = df.Applicant_BirthDate.apply(lambda x: x.month)
+
+#df['Days_of_work'] = df['Manager_DOJ'] - df['Application_Receipt_Date']
+
+
+
+
+
+k = df[['ID','year','month','dayofweek']].groupby(['year','month','dayofweek']).agg('count').reset_index()
+k.rename(columns = {'ID':'month_year_count'},inplace = True)
+#k1 = k1.merge(k2,on = ['year','month'] ,how = 'left')
+
+#df = df.merge(k, on = ['year','month'],how = 'left')
+
+
+k['c'] = 0           
+for i in range(1, len(k)):
+    k.loc[i, 'c'] = k.loc[i-1, 'month_year_count'] 
+k.replace(np.nan,580,inplace = True)          
+
+train = df[df['Business_Sourced'] != -1]
+test = df[df['Business_Sourced'] == -1]
+
+
+df = df.merge(k, on = ['year','month','dayofweek'],how = 'left')
+
+
+
+
+
+df1.replace(np.nan,-1,inplace = True)
+df1 = (df1 - df1.mean()) / (df1.max() - df1.min())
+train3 = df1[df['Business_Sourced'] != -1]
+test3 = df1[df['Business_Sourced'] == -1]
+
+
+
+
+y = train.Business_Sourced
+ID = test.ID
+
+
+#gbm = ensemble.GradientBoostingClassifier(random_state = 42, learning_rate = 0.01,  min_samples_split = 25,subsample =1 , max_features = 'sqrt' ,  n_estimators = 200 , max_depth =  2)
+#lr = LogisticRegression()
+lr = ensemble.GradientBoostingClassifier(random_state = 42, learning_rate = 0.01,  min_samples_split = 25,subsample = 1 , max_features = 'sqrt' ,  n_estimators = 200 , max_depth =  2)
+train['pred']=lr.fit_transform(train3,y)[:,1]
+test['pred'] = lr.predict_proba(test3)[:,1]
+
+
+
+
+    
+ 
+
+
+
+
+train  = train.drop(['Application_Receipt_Date','Applicant_BirthDate','Manager_DoB','Manager_DOJ','Business_Sourced','ID'],axis =1)
+test  = test.drop(['Application_Receipt_Date','Applicant_BirthDate','Manager_DoB','Manager_DOJ','ID','Business_Sourced'],axis =1)
+
+text_columns = []
+
+for f in train.columns:
+    if train[f].dtype=='object':
+        if f != 'loca':
+            text_columns.append(f)
+            lbl = preprocessing.LabelEncoder()
+            lbl.fit(list(train[f].values) + list(test[f].values))
+            train[f] = lbl.transform(list(train[f].values))
+            test[f] = lbl.transform(list(test[f].values))
+   
+   
+train.replace(np.nan, -1,inplace = True)
+test.replace(np.nan,-1,inplace = True)
+
+
+
+
+"""
+T = ctr1 | ctr2 |ctr3 |ctr4
+train = train[np.negative(T)]
+y = y[np.negative(T).values]
+"""
+
+print 'start '
+gbm1 = ensemble.GradientBoostingClassifier(random_state = 42, learning_rate = 0.00045,  min_samples_split = 4,subsample = 0.7, max_features = 'sqrt' ,  n_estimators = 7000 , max_depth =  4)
+gbm1.fit(train,y)
+prob1 = gbm1.predict_proba(test)[:,1]
+
+gbm2 = ensemble.GradientBoostingClassifier(random_state = 42, learning_rate = 0.00045,  min_samples_split = 4,subsample = 0.7, max_features = 'sqrt' ,  n_estimators = 7200 , max_depth =  4)
+gbm2.fit(train,y)
+prob2 = gbm1.predict_proba(test)[:,1]
+
+gbm3 = ensemble.GradientBoostingClassifier(random_state = 42, learning_rate = 0.00045,  min_samples_split = 4,subsample = 0.7, max_features = 'sqrt' ,  n_estimators = 6800 , max_depth =  4)
+gbm3.fit(train,y)
+prob3 = gbm1.predict_proba(test)[:,1]
+
+prob1 = gbm1.predict_proba(test)[:,1]
+prob2 = gbm2.predict_proba(test)[:,1]
+prob3 = gbm3.predict_proba(test)[:,1]
+prob4 = (prob1+prob2+prob3)/3
+
+
+prob4[cte4.values] = 0
+prob4[cte1.values] = 0
+prob4[cte2.values] = 0
+prob4[cte3.values] = 0
+#path1 = 'D:/DS/smartrecruit/AV_faron/input/'
+
+submission12 = pd.DataFrame({'ID':ID,'Business_Sourced':prob4})
+submission12.to_csv('s2.csv',index = False)
+
+
+
+
+import matplotlib.pyplot as plt
+feature_importance = gbm1.feature_importances_
+k = train.columns
+# make importances relative to max importance
+feature_importance = 100.0 * (feature_importance / feature_importance.max())
+sorted_idx = np.argsort(feature_importance)
+pos = np.arange(sorted_idx.shape[0]) + .5
+
+yx = zip(feature_importance, k)
+yx.sort()
+x_sorted = [x for z, x in yx]
+y_sorted = [z for z, x in yx]
+
+
+plt.subplot(1, 2, 2)
+plt.barh(pos, feature_importance[sorted_idx], align='center')
+plt.yticks(pos, x_sorted)
+
+
+#Office_PIN_Applicant_Gender_count,
